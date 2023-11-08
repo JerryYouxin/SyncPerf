@@ -12,6 +12,8 @@
 #include<vector>
 #include <stdexcept>
 
+#include <set>
+
 #define MAXBUFSIZE 4096
 #define COMBINED_REPORT 1
 
@@ -21,6 +23,7 @@
  * @author Mejbah<mohammad.alam@utsa.edu>
  */
 
+#define EXTRACT_LABELED_DATA
 
 
 #ifdef REPORT_LINE_INFO
@@ -108,6 +111,7 @@ public:
     int j=0;
     while(call_stack[j] != 0 ) {
       //printf("%#lx\n", m->stacks[i][j]);  
+      stack_str += std::string(std::size_t(call_stack[j])) + ":";
       sprintf(buf, "addr2line -e %s  -a 0x%lx  | tail -1", _curFilename, call_stack[j] );
       std::string source_line =  exec(buf);
       if(source_line[0] != '?') { // not found
@@ -196,6 +200,18 @@ public:
 		std::cout<< "\n\nSyncPerf Msg: END OF PROGRAM";
 		
 		std::cout<< "\nSyncPerf Msg: Reporting in file: syncperf.report\nSyncPerf Msg: Thread reports in file: thread.csv " << std::endl;
+                
+#ifdef EXTRACT_LABELED_DATA
+                std::map<std::string,int> lab_conflict;
+                std::map<std::string,int> lab_conflict_list;
+                std::map<std::string,int> lab_freq;
+		std::fstream lab_conf_fs;
+		std::fstream lab_conf_list_fs;
+		std::fstream lab_freq_fs;
+		lab_conf_fs.open("syncperf.conflict.txt", std::fstream::out);
+		lab_conf_list_fs.open("syncperf.conflict.list.txt", std::fstream::out);
+		lab_freq_fs.open("syncperf.freq.txt", std::fstream::out);
+#endif
 #ifdef COMBINED_REPORT
 		std::vector<sync_perf_t>high_conflict_low_freq;
 		std::vector<sync_perf_t>high_conflict_high_freq;
@@ -250,8 +266,8 @@ public:
 #if 0
 		thd_fs << "Elapsed time " << thd_level->elapse << std::endl;
 #endif
-		//double elapsed_time_for_freq = thd_level->elapse; //milliseconds
-		double elapsed_time_for_freq = thd_level->elapse < 1000 ? 1000 : thd_level->elapse; //TODO: remove this, use the previous line instead
+		double elapsed_time_for_freq = thd_level->elapse; //milliseconds
+		//double elapsed_time_for_freq = thd_level->elapse < 1000 ? 1000 : thd_level->elapse; //TODO: remove this, use the previous line instead
 #if 0		
 		thd_fs.close();	
 #endif 
@@ -301,6 +317,42 @@ public:
 				sync_perf_entry.conflict_rate = (100*total_fail_count)/double(total_access_count);
 				sync_perf_entry.frequency  = double(total_access_count)/elapsed_time_for_freq; //TODO: fix freqeuncey using max thd->actualRuntim
 
+#ifdef EXTRACT_LABELED_DATA
+                                        std::string call_context_list = "";
+				        for(int con=0; con<m->stack_count; con++){
+                                            int depth = 0;
+			  	            std::string call_contexts = "";
+                                            while(m->stacks[con][depth]) {
+							call_contexts += "0x";
+							std::stringstream ss;
+							ss << std::hex << m->stacks[con][depth] << std::dec;
+							call_contexts += ss.str();
+							call_contexts += ",";
+							depth++; 
+					    }
+                                            if( depth==0 ) continue; // filter out empty call_context
+                                            call_context_list += ";";
+                                            call_context_list += call_contexts;
+				            if( sync_perf_entry.conflict_rate > THRESHOLD_CONFLICT){
+                                                lab_conflict[call_contexts] = 1;
+                                            } else {
+                                                lab_conflict[call_contexts] = 0;
+                                            }
+                                            if ( sync_perf_entry.frequency > THRESHOLD_FREQUENCY) {
+                                                lab_freq[call_contexts] = 1;
+                                            } else {
+                                                lab_freq[call_contexts] = 0;
+                                            }
+                                        }
+                                        if ( sync_perf_entry.conflict_rate > THRESHOLD_CONFLICT ) {
+                                            lab_conflict_list[call_context_list] = 1;
+                                        } else {
+                                            lab_conflict_list[call_context_list] = 0;
+                                        }
+#endif
+				if( sync_perf_entry.conflict_rate > THRESHOLD_CONFLICT ||
+                                    sync_perf_entry.frequency > THRESHOLD_FREQUENCY){
+
 				//print call stacks
 				for(int con=0; con<m->stack_count; con++){
 #ifdef REPORT_LINE_INFO
@@ -324,6 +376,8 @@ public:
 					strcpy(sync_perf_entry.line_info[con], call_contexts.c_str());
 					sync_perf_entry.count++;
 				}
+
+				} // filter out not significant reports
 			
 				
 				if( sync_perf_entry.conflict_rate > THRESHOLD_CONFLICT ){
@@ -373,6 +427,20 @@ public:
 		//thd_fs << "Elapsed time " << thd_level->elapse << std::endl;
 		thd_fs.close();
 	
+#ifdef EXTRACT_LABELED_DATA
+                for(std::map<std::string, int>::iterator it=lab_conflict.begin(), ie=lab_conflict.end(); it!=ie; ++it) {
+		    lab_conf_fs << it->second << ";" << it->first << std::endl;
+                }
+                for(std::map<std::string, int>::iterator it=lab_conflict_list.begin(), ie=lab_conflict_list.end(); it!=ie; ++it) {
+		    lab_conf_list_fs << it->second << it->first << std::endl;
+                }
+                for(std::map<std::string, int>::iterator it=lab_freq.begin(), ie=lab_freq.end(); it!=ie; ++it) {
+		    lab_freq_fs << it->second << ";" << it->first << std::endl;
+                }
+                lab_conf_fs.close();
+                lab_conf_list_fs.close();
+                lab_freq_fs.close();
+#endif
 #ifdef COMBINED_REPORT
 		std::fstream fs;
 		fs.open("syncperf.report", std::fstream::out);

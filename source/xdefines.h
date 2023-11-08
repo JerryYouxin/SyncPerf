@@ -165,9 +165,11 @@ public:
   enum { PageSize = 4096UL };
   enum { PAGE_SIZE_MASK = (PAGE_SIZE-1) };
 
-  enum { MAX_THREADS = 2048 };//4096 };
+  //enum { MAX_THREADS = 2048 };//4096 };
+  enum { MAX_THREADS = 1024 };//4096 };
+  //enum { MAX_THREADS = 32 };//4096 };
 
-	enum { MAX_SYNC_ENTRIES = 1000000 };
+	enum { MAX_SYNC_ENTRIES = 10000000 };
 		
 	// We only support 64 heaps in total.
   enum { NUM_HEAPS = 128 };
